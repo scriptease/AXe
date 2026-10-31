@@ -37,4 +37,14 @@ struct KeyboardLayoutTests {
         // Option down, L down, L up, Option up
         #expect(try TextToHIDEvents.convertTextToHIDEvents("@", layout: .de).count == 4)
     }
+
+    @Test("Keyboard identifiers map by their hw= part")
+    func keyboardIdentifierMapping() {
+        #expect(KeyboardLayout(keyboardIdentifier: "de_DE@sw=QWERTZ-German;hw=German") == .de)
+        #expect(KeyboardLayout(keyboardIdentifier: "en_US@sw=QWERTY;hw=ABC") == .us)
+        #expect(KeyboardLayout(keyboardIdentifier: "en_US@sw=QWERTY;hw=ABC;ml=1") == .us)
+        #expect(KeyboardLayout(keyboardIdentifier: "de_DE@sw=QWERTZ-German;hw=ABC;ml=1") == .us)
+        #expect(KeyboardLayout(keyboardIdentifier: "fr_FR@sw=AZERTY-French;hw=French") == nil)
+        #expect(KeyboardLayout(keyboardIdentifier: "emoji@sw=Emoji") == nil)
+    }
 }

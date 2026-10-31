@@ -23,7 +23,7 @@ struct Type: AsyncParsableCommand {
         • For complex text or automation, prefer --stdin or --file methods
         
         Character Support:
-        • HID keycodes are key positions; pass --layout to match the simulator's hardware keyboard layout
+        • HID keycodes are key positions; pass --layout to match the simulator's hardware keyboard layout (auto reads it)
         • us (default): A-Z, a-z, 0-9, and symbols: !@#$%^&*()_+-={}[]|\\:";'<>?,./`~
         • de: QWERTZ incl. äöüß§€, @ and []{}|\\ via Option; dead keys (´`^~) are not supported
         • Not supported: International characters (£€¥), accented letters (éñü), etc.
@@ -45,8 +45,8 @@ struct Type: AsyncParsableCommand {
     @Option(name: .customLong("udid"), help: "The UDID of the simulator.")
     var simulatorUDID: String
 
-    @Option(name: .customLong("layout"), help: "Hardware keyboard layout active in the simulator: us (default) or de.")
-    var layout: KeyboardLayout = .us
+    @Option(name: .customLong("layout"), help: "Hardware keyboard layout active in the simulator: us (default), de, or auto (read the active iOS keyboard).")
+    var layoutChoice: KeyboardLayoutChoice = .us
 
     func validate() throws {
         let sourceCount = [text != nil, useStdin, inputFile != nil].filter { $0 }.count
@@ -101,6 +101,9 @@ struct Type: AsyncParsableCommand {
             throw ValidationError("Invalid input configuration.")
         }
         
+        let layout = try layoutChoice.resolve(simulatorUDID: simulatorUDID)
+        logger.info().log("Using keyboard layout '\(layout.rawValue)'")
+
         // Validate text first
         guard TextToHIDEvents.validateText(inputText, layout: layout) else {
             // Find unsupported characters for detailed error message

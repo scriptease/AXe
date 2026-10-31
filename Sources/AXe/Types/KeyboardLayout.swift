@@ -1,8 +1,9 @@
 import ArgumentParser
+import Foundation
 
 /// Hardware keyboard layout active in the simulator. HID events carry key positions,
 /// so the same character needs a different key per layout.
-enum KeyboardLayout: String, CaseIterable, ExpressibleByArgument {
+enum KeyboardLayout: String, CaseIterable {
     case us
     case de
 
@@ -11,6 +12,59 @@ enum KeyboardLayout: String, CaseIterable, ExpressibleByArgument {
         case .us: return KeyEvent.keyCodeForString(string)
         case .de: return KeyEvent.germanKeyCodeForString(string)
         }
+    }
+
+    /// Maps an iOS keyboard identifier such as `de_DE@sw=QWERTZ-German;hw=German`
+    /// by its `hw=` part; nil when the hardware layout is not supported.
+    init?(keyboardIdentifier: String) {
+        let hardware = keyboardIdentifier
+            .split(separator: "@", maxSplits: 1).last?
+            .split(separator: ";")
+            .first { $0.hasPrefix("hw=") }?
+            .dropFirst(3)
+        switch hardware {
+        case "ABC", "US", "U.S.": self = .us
+        case "German": self = .de
+        default: return nil
+        }
+    }
+}
+
+/// `--layout` value: a fixed layout, or `auto` to read the simulator's active keyboard.
+enum KeyboardLayoutChoice: String, CaseIterable, ExpressibleByArgument {
+    case us
+    case de
+    case auto
+
+    func resolve(simulatorUDID: String) throws -> KeyboardLayout {
+        switch self {
+        case .us: return .us
+        case .de: return .de
+        case .auto:
+            let identifier = try Self.activeKeyboardIdentifier(simulatorUDID: simulatorUDID)
+            guard let layout = KeyboardLayout(keyboardIdentifier: identifier) else {
+                throw CLIError(errorDescription: "Unsupported simulator keyboard '\(identifier)'. Pass --layout us or --layout de explicitly.")
+            }
+            return layout
+        }
+    }
+
+    /// Reads the keyboard iOS last switched to, e.g. `en_US@sw=QWERTY;hw=ABC`.
+    private static func activeKeyboardIdentifier(simulatorUDID: String) throws -> String {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.arguments = ["simctl", "spawn", simulatorUDID, "defaults", "read", "com.apple.keyboard.preferences", "KeyboardLastUsed"]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        let identifier = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard process.terminationStatus == 0, !identifier.isEmpty else {
+            throw CLIError(errorDescription: "Could not read the active keyboard of simulator \(simulatorUDID). Pass --layout us or --layout de explicitly.")
+        }
+        return identifier
     }
 }
 
