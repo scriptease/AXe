@@ -23,8 +23,9 @@ struct Type: AsyncParsableCommand {
         • For complex text or automation, prefer --stdin or --file methods
         
         Character Support:
-        • Only US keyboard characters are supported via HID keycodes
-        • Supported: A-Z, a-z, 0-9, and symbols: !@#$%^&*()_+-={}[]|\\:";'<>?,./`~
+        • HID keycodes are key positions; pass --layout to match the simulator's hardware keyboard layout
+        • us (default): A-Z, a-z, 0-9, and symbols: !@#$%^&*()_+-={}[]|\\:";'<>?,./`~
+        • de: QWERTZ incl. äöüß§€, @ and []{}|\\ via Option; dead keys (´`^~) are not supported
         • Not supported: International characters (£€¥), accented letters (éñü), etc.
         • This is a limitation of the underlying HID keyboard protocol
         
@@ -43,6 +44,9 @@ struct Type: AsyncParsableCommand {
     
     @Option(name: .customLong("udid"), help: "The UDID of the simulator.")
     var simulatorUDID: String
+
+    @Option(name: .customLong("layout"), help: "Hardware keyboard layout active in the simulator: us (default) or de.")
+    var layout: KeyboardLayout = .us
 
     func validate() throws {
         let sourceCount = [text != nil, useStdin, inputFile != nil].filter { $0 }.count
@@ -98,17 +102,16 @@ struct Type: AsyncParsableCommand {
         }
         
         // Validate text first
-        guard TextToHIDEvents.validateText(inputText) else {
+        guard TextToHIDEvents.validateText(inputText, layout: layout) else {
             // Find unsupported characters for detailed error message
             let unsupportedChars = inputText.compactMap { char in
-                let keyEvent = KeyEvent.keyCodeForString(String(char))
+                let keyEvent = layout.keyEvent(for: String(char))
                 return keyEvent.keyCode == 0 ? char : nil
             }
             let errorMessage = """
                 Unsupported characters found: \(unsupportedChars.map { "'\($0)'" }.joined(separator: ", "))
                 
-                Only US keyboard characters are supported via HID keycodes.
-                Supported: A-Z, a-z, 0-9, and symbols: !@#$%^&*()_+-={}[]|\\:";'<>?,./`~
+                These characters have no key in the '\(layout.rawValue)' keyboard layout.
                 """
             logger.error().log(errorMessage)
             throw TextToHIDEvents.TextConversionError.unsupportedCharacter(unsupportedChars.first!)
@@ -117,7 +120,7 @@ struct Type: AsyncParsableCommand {
         // Convert text to HID events using the new utility
         let hidEvents: [FBSimulatorHIDEvent]
         do {
-            hidEvents = try TextToHIDEvents.convertTextToHIDEvents(inputText)
+            hidEvents = try TextToHIDEvents.convertTextToHIDEvents(inputText, layout: layout)
             logger.info().log("Successfully converted text to \(hidEvents.count) HID events")
         } catch let error as TextToHIDEvents.TextConversionError {
             logger.error().log("Text conversion failed: \(error.localizedDescription)")
